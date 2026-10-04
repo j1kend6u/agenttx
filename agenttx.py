@@ -140,6 +140,19 @@ class Txn:
                 shutil.copy2(src, dst)
         return Snapshot(new_path), None
 
+    def rebase(self, new_base: Snapshot):
+        """Re-open this transaction against a new committed head.
+        Called on abort before replanning. Clears all reads and writes."""
+        self._umount()
+        # Overlayfs leaves root-owned files behind in upper and work.
+        sh_ok(f"sudo rm -rf {self.upper} {self.work}")
+        self.upper.mkdir(parents=True)
+        self.work.mkdir(parents=True)
+        self.base = new_base
+        self.reads = {}
+        self.writes = []
+        self._mount()
+
     def cleanup(self):
         self._umount()
         sh_ok(f"sudo rm -rf {self.dir}")
