@@ -17,33 +17,45 @@ concurrent commit invalidated.
 
 ## Status
 
-Pre-alpha. Weeks 1-2 of a 6-8 week MVP.
+Working MVP. All core ideas implemented:
 
-What works today:
-- Overlayfs snapshot prototype (base + upper write layer + merged view)
-- Toy OCC validator on a plain directory: read-set, value-based validation,
-  commit-or-abort, and abort-with-replan
-- Reproduced the "rename API vs new caller" conflict; AgentTx catches it
-  and recovers without discarding the transaction
-
-What's next:
-- Command probes (trace `grep`, `pytest` output as reads)
-- DAG-based partial replay (re-execute only invalidated steps)
-- Wrap one real CLI agent (final demo)
+- Overlayfs snapshots — each transaction gets its own copy-on-write view
+- OCC validation — read-set re-probing at commit
+- Command probes — grep/test output counts as a read (git can't see these)
+- Memoized partial replay — re-executes only steps downstream of an invalidated probe
+- Rebase — aborted transactions re-open against the new head and replan
+- Elle-style checker — verifies the committed history has no cycle
 
 ## Demo
 
-Scenario: two agents run in parallel against the same repo.
+    $ python3 agenttx_demo.py
+    --- Commit A ---
+      A committed. New head: snap_A1
+    --- Commit B ---
+      B ABORT: read of cmd:grep...invalidated
+      [B] REPLAN: rebasing against snap_A1, then re-running
+      B committed after replan. New head: snap_B2
+    --- Elle checker on committed history ---
+      6 events in log
+      serializable: True
+      edges: {'A': ['B']}
 
-    [Agent A] ✓ COMMIT — wrote ['api.py']
-    [Agent B] ✗ ABORT — read of api.py invalidated (was 13b94dd6..., now b6193698...)
-    [Agent B] ↻ REPLAN — re-reading invalidated probes...
-    [Agent B] ✎ adapting plan to new API name
-    [Agent B] ✓ COMMIT — wrote ['client.py']
+Agent B never opened api.py. Its only knowledge of the API came from a
+grep. Git worktrees would merge B's change cleanly and leave main broken.
+AgentTx caught it, aborted B, rebased B against A's snapshot, and let B
+re-run with correct information. The checker verified the result is
+serializable.
 
-Final state: both sides of the rename are consistent. Neither agent's work
-was thrown away. A git-worktree baseline silently leaves main broken in
-the same scenario.
+## Known limits
+
+- client.py still calls get_user after A's rename. No agent claimed to fix
+  it; a third agent "update callers" would close this. This is a workload
+  property, not a system bug.
+- The checker catches concurrency anomalies (cycles in the serialization
+  graph). It does not catch semantic violations on distinct keys — see
+  docs/semantics.md for why.
+- Nondeterministic command output is currently treated as deterministic.
+  Opaque probes are designed but not implemented.
 
 ## Layout
 
