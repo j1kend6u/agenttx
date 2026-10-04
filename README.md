@@ -69,3 +69,12 @@ serializable.
 See docs/semantics.md. Short version: AgentTx gives serializability
 RELATIVE TO THE TRACKED READ-SET. It makes no claim about reads the
 tracer did not observe, or about the outside world.
+
+## Try it
+
+    git clone https://github.com/j1kend6u/agenttx.git
+    cd agenttx
+    sudo apt install -y python3
+    python3 agenttx_demo.py
+
+Requires Linux with overlayfs (WSL2 is fine). Expects sudo for mount/umount.
